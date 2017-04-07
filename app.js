@@ -11,8 +11,8 @@ const https = require('https');
 const request = require('request');
 
 //oauth details
-const LINKEDIN_CLIENT_ID = "";
-const LINKEDIN_CLIENT_PASSWORD = "";
+const LINKEDIN_CLIENT_ID = "86n4804y5nuate";
+const LINKEDIN_CLIENT_PASSWORD = "PhKwK8gF5j4VcCv3";
 const AUTHBOT_CALLBACKHOST = "localhost:3979";
 const MICROSOFT_APP_ID = "";
 
@@ -72,31 +72,16 @@ server.get('/auth/linkedin/callback',
   passport.authenticate('linkedin', { failureRedirect: '/auth/linkedin' }),
   (req, res) => {
 
-    /*
-    console.log('OAuthCallback');
-    console.log(req);
-    const address = JSON.parse(req.query.state);
-    const magicCode = crypto.randomBytes(4).toString('hex');
-    const messageData = { magicCode: magicCode, accessToken: req.session.accessToken, refreshToken: req.session.refreshToken, userId: address.user.id, name: req.user.displayName, email: req.user.emails[0] ? req.user.emails[0] : "" };
-    
-    var continueMsg = new builder.Message().address(address).text(JSON.stringify(messageData));
-    console.log(continueMsg.toMessage());
-
-    bot.receive(continueMsg.toMessage());
-    res.send('Welcome ' + req.user.displayName + '! Please copy this number and paste it back to your chat so your authentication can complete: ' + magicCode);
-
-    */
-    console.log('OAuthCallback');
-    console.log(req);
+    //console.log('OAuthCallback');
+    //console.log(req);
 
     const address = JSON.parse(req.query.state);
-    const messageData = { accessToken: req.session.accessToken, refreshToken: req.session.refreshToken, userId: address.user.id, name: req.user.displayName, email: req.user.emails[0] ? req.user.emails[0] : "", linkedInUserId: req.user.id};
+    const messageData = { accessToken: req.session.accessToken, refreshToken: req.session.refreshToken, userId: address.user.id, name: req.user.displayName, email: req.user.emails[0] ? req.user.emails[0] : "", linkedInUserId: req.user.id };
 
     var continueMsg = new builder.Message().address(address).text(JSON.stringify(messageData));
     console.log(continueMsg.toMessage());
 
     bot.receive(continueMsg.toMessage());
-    //res.send('Welcome ' + req.user.displayName + '! Please copy this number and paste it back to your chat so your authentication can complete: ' + magicCode);
   });
 
 passport.serializeUser(function (user, done) {
@@ -115,7 +100,7 @@ passport.use(new LinkedinStrategy({
   passReqToCallback: true
 },
   function (req, accessToken, refreshToken, profile, done) {
-    // asynchronous verification, for effect...
+    // asynchronous verification
     req.session.accessToken = accessToken;
     process.nextTick(function () {
       // To keep the example simple, the user's Linkedin profile is returned to
