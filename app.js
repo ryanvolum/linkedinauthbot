@@ -23,9 +23,9 @@ const MICROSOFT_APP_ID = "";
 // Setup Restify Server
 var server = restify.createServer();
 server.listen(process.env.port || process.env.PORT || 3979, function () {
-  console.log('%s listening to %s', server.name, server.url); 
+  console.log('%s listening to %s', server.name, server.url);
 });
-  
+
 // Create chat bot
 console.log('started...')
 console.log(MICROSOFT_APP_ID);
@@ -49,7 +49,7 @@ server.use(expressSession({ secret: 'keyboard cat', resave: true, saveUninitiali
 server.use(passport.initialize());
 
 server.get('/auth/linkedin', function (req, res, next) {
-  passport.authenticate('linkedin', { failureRedirect: '/auth/linkedin', state: req.query.address}, function (err, user, info) {
+  passport.authenticate('linkedin', { failureRedirect: '/auth/linkedin', state: req.query.address }, function (err, user, info) {
     console.log('login');
     if (err) {
       console.log(err);
@@ -71,6 +71,8 @@ server.get('/auth/linkedin', function (req, res, next) {
 server.get('/auth/linkedin/callback',
   passport.authenticate('linkedin', { failureRedirect: '/auth/linkedin' }),
   (req, res) => {
+
+    /*
     console.log('OAuthCallback');
     console.log(req);
     const address = JSON.parse(req.query.state);
@@ -82,24 +84,37 @@ server.get('/auth/linkedin/callback',
 
     bot.receive(continueMsg.toMessage());
     res.send('Welcome ' + req.user.displayName + '! Please copy this number and paste it back to your chat so your authentication can complete: ' + magicCode);
-});
 
-passport.serializeUser(function(user, done) {
+    */
+    console.log('OAuthCallback');
+    console.log(req);
+
+    const address = JSON.parse(req.query.state);
+    const messageData = { accessToken: req.session.accessToken, refreshToken: req.session.refreshToken, userId: address.user.id, name: req.user.displayName, email: req.user.emails[0] ? req.user.emails[0] : "", linkedInUserId: req.user.id};
+
+    var continueMsg = new builder.Message().address(address).text(JSON.stringify(messageData));
+    console.log(continueMsg.toMessage());
+
+    bot.receive(continueMsg.toMessage());
+    //res.send('Welcome ' + req.user.displayName + '! Please copy this number and paste it back to your chat so your authentication can complete: ' + magicCode);
+  });
+
+passport.serializeUser(function (user, done) {
   done(null, user);
 });
 
-passport.deserializeUser(function(id, done) {
+passport.deserializeUser(function (id, done) {
   done(null, id);
 });
 
 passport.use(new LinkedinStrategy({
-    clientID:     LINKEDIN_CLIENT_ID,
-    clientSecret: LINKEDIN_CLIENT_PASSWORD,
-    callbackURL:  "http://localhost:3979/auth/linkedin/callback",
-    scope:        [ 'r_basicprofile', 'r_emailaddress'],
-    passReqToCallback: true
-  },
-  function(req, accessToken, refreshToken, profile, done) {
+  clientID: LINKEDIN_CLIENT_ID,
+  clientSecret: LINKEDIN_CLIENT_PASSWORD,
+  callbackURL: "http://localhost:3979/auth/linkedin/callback",
+  scope: ['r_basicprofile', 'r_emailaddress'],
+  passReqToCallback: true
+},
+  function (req, accessToken, refreshToken, profile, done) {
     // asynchronous verification, for effect...
     req.session.accessToken = accessToken;
     process.nextTick(function () {
@@ -134,7 +149,7 @@ bot.dialog('signin', [
 
 bot.dialog('/', [
   (session, args, next) => {
-    if (!(session.userData.userName && session.userData.accessToken && session.userData.refreshToken)) {
+    if (!(session.userData.loginData && session.userData.loginData.name && session.userData.loginData.accessToken)) {
       session.send("Welcome! This bot logs you into linked in!");
       session.beginDialog('signinPrompt');
     } else {
@@ -142,20 +157,36 @@ bot.dialog('/', [
     }
   },
   (session, results, next) => {
-    if (session.userData.userName && session.userData.accessToken) {
+    if (session.userData.loginData.name && session.userData.loginData.accessToken) {
       // They're logged in
-      session.send("Welcome " + session.userData.userName + "! You are currently logged in. ");
+      session.send("Welcome " + session.userData.loginData.name + "! You successfully authenticated!");
+      session.replaceDialog("promptOptions");
     } else {
       session.endConversation("Goodbye.");
     }
   }
 ]);
 
+bot.dialog("promptOptions", [
+  (session) => {
+    builder.Prompts.choice(session, "What would you like to do?", ['Get Profile Info'], { listStyle: builder.ListStyle.button });
+  },
+  (session, results) => {
+    if (results.response.entity === "Get Profile Info") {
+      if (session.userData.loginData.name) {
+        session.send("You are " + session.userData.loginData.name + ". Your email is " + session.userData.loginData.email.value + " and your LinkedIn user ID is " + session.userData.loginData.linkedInUserId);
+      } else {
+        session.send("I don't know who you are...");
+      }
+    }
+  }
+])
+
 bot.dialog('signinPrompt', [
   (session, args) => {
     if (args && args.invalid) {
       // Re-prompt the user to click the link
-      builder.Prompts.text(session, "please click the signin link.");
+      builder.Prompts.text(session, "please sign in by clicking the link!");
     } else {
       login(session);
     }
@@ -163,75 +194,42 @@ bot.dialog('signinPrompt', [
   (session, results) => {
     //resuming
     session.userData.loginData = JSON.parse(results.response);
-    if (session.userData.loginData && session.userData.loginData.magicCode && session.userData.loginData.accessToken) {
-      session.beginDialog('validateCode');
+    if (session.userData.loginData && session.userData.loginData.accessToken && session.userData.loginData.linkedInUserId && session.userData.loginData.name) {
+      session.endDialog("Welcome " + session.userData.loginData.name + "! You are now logged in to Linked In. ");
     } else {
       session.replaceDialog('signinPrompt', { invalid: true });
     }
-  },
-  (session, results) => {
-    if (results.response) {
-      //code validated
-      session.userData.userName = session.userData.loginData.name;
-      session.endDialogWithResult({ response: true });
-    } else {
-      session.endDialogWithResult({ response: false });
-    }
-  }
-]);
+  }]);
 
-bot.dialog('validateCode', [
-  (session) => {
-    builder.Prompts.text(session, "Please enter the code you received or type 'quit' to end. ");
-  },
-  (session, results) => {
-    const code = results.response;
-    if (code === 'quit') {
-      session.endDialogWithResult({ response: false });
-    } else {
-      if (code === session.userData.loginData.magicCode) {
-        // Authenticated, save
-        session.userData.accessToken = session.userData.loginData.accessToken;
-        session.userData.refreshToken = session.userData.loginData.refreshToken;
-
-        session.endDialogWithResult({ response: true });
-      } else {
-        session.send("hmm... Looks like that was an invalid code. Please try again.");
-        session.replaceDialog('validateCode');
-      }
-    }
-  }
-]);
-
-function getAccessTokenWithRefreshToken(refreshToken, callback){
+function getAccessTokenWithRefreshToken(refreshToken, callback) {
   console.log("getAccessTokenWithRefreshToken");
-  var data = 'grant_type=refresh_token' 
-        + '&refresh_token=' + refreshToken
-        + '&client_id=' + AZUREAD_APP_ID
-        + '&client_secret=' + encodeURIComponent(AZUREAD_APP_PASSWORD) 
+  var data = 'grant_type=refresh_token'
+    + '&refresh_token=' + refreshToken
+    + '&client_id=' + AZUREAD_APP_ID
+    + '&client_secret=' + encodeURIComponent(AZUREAD_APP_PASSWORD)
 
   var options = {
-      method: 'POST',
-      url: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
-      body: data,
-      json: true,
-      headers: { 'Content-Type' : 'application/x-www-form-urlencoded' }
+    method: 'POST',
+    url: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+    body: data,
+    json: true,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
   };
 
   request(options, function (err, res, body) {
-      if (err) return callback(err, body, res);
-      if (parseInt(res.statusCode / 100, 10) !== 2) {
-          if (body.error) {
-              return callback(new Error(res.statusCode + ': ' + (body.error.message || body.error)), body, res);
-          }
-          if (!body.access_token) {
-              return callback(new Error(res.statusCode + ': refreshToken error'), body, res);
-          }
-          return callback(null, body, res);
+    if (err) return callback(err, body, res);
+    if (parseInt(res.statusCode / 100, 10) !== 2) {
+      if (body.error) {
+        return callback(new Error(res.statusCode + ': ' + (body.error.message || body.error)), body, res);
       }
-      callback(null, {
-          accessToken: body.access_token,
-          refreshToken: body.refresh_token
-      }, res);
-  }); 
+      if (!body.access_token) {
+        return callback(new Error(res.statusCode + ': refreshToken error'), body, res);
+      }
+      return callback(null, body, res);
+    }
+    callback(null, {
+      accessToken: body.access_token,
+      refreshToken: body.refresh_token
+    }, res);
+  });
 }
